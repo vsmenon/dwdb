@@ -17,7 +17,7 @@ const bool temp = true;
 void main(List<String> args) async {
   ArgParser parser = ArgParser()
     ..addOption('chrome', abbr: 'c', defaultsTo: '9222')
-    ..addOption('dart', abbr: 'd', defaultsTo: '8182');
+    ..addOption('dart', abbr: 'd', defaultsTo: '8181');
   var options = parser.parse(args);
 
   final int serviceProtocolPort = int.parse(options['dart']);

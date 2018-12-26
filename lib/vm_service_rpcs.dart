@@ -28,7 +28,38 @@ class Service {
   Future<Breakpoint> addBreakpointWithScriptUri(
       String isolateId, String scriptUri, int line,
       {int column}) async {
-    throw UnimplementedError('addBreakpointWithScriptUri');
+    // TODO(vsm): Clean this up and factor it out.
+    for (var mapping in _mappings) {
+      for (var url in mapping.urls) {
+        if (scriptUri.endsWith(url)) {
+          for (var lineEntry in mapping.lines) {
+            for (var entry in lineEntry.entries) {
+              if (entry.sourceLine >= line) {
+                // Just use this for now.
+                // Check the url matches!
+                // FIXME
+                var fullUrl = p.join(p.dirname(scriptUri), mapping.targetUrl);
+                var scriptId = _scriptIdMap[fullUrl];
+                // WIP uses zero-based numbering.
+                var jsLine = lineEntry.line - 1;
+
+                var result = await _cdp.debugger
+                    .sendCommand('Debugger.setBreakpoint', params: {
+                  'location': {
+                    'scriptId': scriptId,
+                    'lineNumber': jsLine,
+                  }
+                });
+                _streamNotify(
+                    'Debug', Event()..kind = EventKind.BreakpointAdded);
+                print(result);
+                return Breakpoint()..id = _genId('Breakpoint');
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   Future<Breakpoint> addBreakpointAtEntry(
@@ -97,7 +128,11 @@ class Service {
   }
 
   Future<Success> pause(String isolateId) async {
-    throw UnimplementedError('pause');
+    // TODO(vsm): Support multiple isolates.
+    if (_vm.isolates.first.id == isolateId) {
+      await _cdp.debugger.pause();
+    }
+    return Success();
   }
 
   Future<Success> kill(String isolateId) async {
@@ -116,7 +151,11 @@ class Service {
 
   Future<Success> resume(String isolateId,
       {StepOption step, int frameIndex}) async {
-    throw UnimplementedError('resume');
+    // TODO(vsm): Support multiple isolates.
+    if (_vm.isolates.first.id == isolateId) {
+      await _cdp.debugger.resume();
+    }
+    return Success();
   }
 
   Future<Success> setExceptionPauseMode(
