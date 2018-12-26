@@ -112,6 +112,8 @@ class ServiceDispatcher {
     members.forEach((symbol, method) {
       if (_serializable(method)) {
         var name = _desymbol(method.simpleName);
+        // Skip private fields.
+        if (name.startsWith('_')) return;
         // Prune trailing _ for reserved words.
         if (name.endsWith('_')) name = name.substring(0, name.length - 1);
         var value =

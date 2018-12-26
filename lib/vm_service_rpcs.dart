@@ -3,7 +3,10 @@
 // BSD-style license that can be found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:io';
 
+import 'package:path/path.dart' as p;
+import 'package:source_maps/source_maps.dart' as sm;
 import 'package:webkit_inspection_protocol/webkit_inspection_protocol.dart';
 
 import 'vm_service_types.dart';
@@ -55,8 +58,9 @@ class Service {
   }
 
   Future<Object> /*Isolate|Sentinel*/ getIsolate(String isolateId) async {
-    var isolate =
-        _isolates.firstWhere((i) => i.id == isolateId, orElse: () => null);
+    var isolate = _vm
+        .getIsolates()
+        .firstWhere((i) => i.id == isolateId, orElse: () => null);
 
     return isolate ?? Sentinel();
   }
@@ -126,15 +130,21 @@ class Service {
 
   Future<Success> setLibraryDebuggable(
       String isolateId, String libraryId, bool isDebuggable) async {
-    throw UnimplementedError('setLibraryDebuggable');
+    // TODO(vsm): Enable / disable debugging on this library.  We'll need to
+    // figure out how to map to this granularity on a JS Script.
+    return Success();
   }
 
   Future<Success> setName(String isolateId, String name) async {
-    throw UnimplementedError('setName');
+    var isolate =
+        _vm.getIsolates().firstWhere((i) => i.id == isolateId, orElse: null);
+    if (isolate != null) isolate.name = name;
+    return Success();
   }
 
   Future<Success> setVMName(String name) async {
-    throw UnimplementedError('setVMName');
+    _vm.name = name;
+    return Success();
   }
 
   Future<Success> streamCancel(String streamId) async {
@@ -177,14 +187,60 @@ class Service {
     _cdp = await tab.connect();
 
     // Initialize the Dart 'VM'.
-    _isolates = [
-      Isolate()
-        ..id = _genId('Isolate')
-        ..name = tab.url
-    ];
-    _vm = VM()..isolates = _isolates.map((i) => i.toRef()).toList();
+    var isolate = Isolate();
+    isolate
+      ..id = _genId('Isolate')
+      ..name = tab.url
+      ..runnable = true
+      ..pauseEvent = (Event()
+        ..kind = EventKind.Resume
+        ..isolate = isolate.toRef());
+    _vm = VM()..getIsolates().add(isolate);
 
-    _initialized.complete();
+    _cdp.runtime.enable();
+    await _cdp.runtime
+        .evaluate('console.log("Dart Web Debugger Proxy Running")');
+
+    _cdp.debugger.enable();
+    _cdp.debugger.onScriptParsed.listen((ScriptParsedEvent e) async {
+      final WipScript script = e.script;
+      var isolate = _vm.getIsolates().first;
+      var libraries = isolate.getLibraries();
+
+      String smUrl = script.sourceMapURL;
+      if (smUrl != null && smUrl.isNotEmpty) {
+        smUrl = p.join(p.dirname(script.url), smUrl);
+        smUrl = smUrl.startsWith('file://')
+            ? smUrl.substring('file://'.length)
+            : smUrl;
+        _scriptIdMap[script.url] = script.scriptId;
+        final sourceMapContents = await File(smUrl).readAsString();
+        // This may not be a single mapping.
+        final mapping = sm.parse(sourceMapContents) as sm.SingleMapping;
+
+        for (var src in mapping.urls) {
+          // TODO(vsm): Support part files.
+          var dartUrl = p.join(p.dirname(script.url), src);
+          var library = Library()
+            ..id = _genId('Library')
+            ..uri = dartUrl
+            ..name = p.basenameWithoutExtension(dartUrl);
+          // TODO(vsm): Need a robust way to query for the root library.
+          if (libraries.isEmpty) isolate.rootLib = library.toRef();
+          libraries.add(library);
+        }
+
+        _mappings.add(mapping);
+      }
+    });
+
+    // TODO(vsm): Wait properly for page to load?
+    Future<void>.delayed(const Duration(milliseconds: 200), () {
+      // We delay a small amount in order to allow the script information to
+      // be populated as events.
+
+      _initialized.complete();
+    });
   }
 
   void _streamNotify(String streamId, Event e) {
@@ -198,7 +254,6 @@ class Service {
   // Callback to dispatch out-of-band Event objects.  See [streamListen] and
   // [streamCancel] below.
   final StreamNotifier _streamNotifier;
-
   final Set<String> _subscribedStreams = Set();
 
   // Indicater that this [Service] is initialized and ready.
@@ -206,7 +261,12 @@ class Service {
   Future get ready => _initialized.future;
 
   VM _vm;
-  List<Isolate> _isolates;
+
+  // TODO(vsm): Make this per isolate?
+  Set<WipScript> _scripts;
+  Map<Library, WipScript> _libraries;
+  final Map<String, String> _scriptIdMap = {};
+  final List<sm.SingleMapping> _mappings = [];
 }
 
 class RpcErrorData {

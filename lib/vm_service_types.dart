@@ -944,7 +944,9 @@ class Isolate extends Response {
   // A list of all libraries for this isolate.
   //
   // Guaranteed to be initialized when the IsolateRunnable event fires.
-  List<RefLibrary> libraries;
+  List<RefLibrary> get libraries => _libraries.map((i) => i.toRef()).toList();
+  List<Library> _libraries = [];
+  List<Library> getLibraries() => _libraries;
 
   // A list of all breakpoints for this isolate.
   List<Breakpoint> breakpoints;
@@ -1001,6 +1003,11 @@ class Library extends VmObject {
 
   // A list of all classes in this library.
   List<RefClass> classes;
+
+  RefLibrary toRef() => RefLibrary()
+    ..id = id
+    ..name = name
+    ..uri = uri;
 }
 
 class LibraryDependency {
@@ -1337,6 +1344,8 @@ class RefVM extends Response {
 class VM extends Response {
   VM() : super('VM');
 
+  String name = 'Dart Web';
+
   // Word length on target architecture (e.g. 32, 64).
   int architectureBits;
 
@@ -1358,5 +1367,7 @@ class VM extends Response {
   int startTime;
 
   // A list of isolates running in the VM.
-  List<RefIsolate> isolates;
+  List<RefIsolate> get isolates => _isolates.map((i) => i.toRef()).toList();
+  List<Isolate> _isolates = [];
+  List<Isolate> getIsolates() => _isolates;
 }
