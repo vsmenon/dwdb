@@ -285,6 +285,7 @@ class Service {
     await _cdp.runtime
         .evaluate('console.log("Dart Web Debugger Proxy Running")');
 
+    // Parse and map script in the browser back to Dart libraries.
     _cdp.debugger.enable();
     _cdp.debugger.onScriptParsed.listen((ScriptParsedEvent e) async {
       final WipScript script = e.script;
@@ -331,6 +332,11 @@ class Service {
         _mappings.add(mapping);
       }
     });
+
+    _cdp.debugger.onPaused.listen((e) async {
+      print('PAUSE: $e ${e.reason}');
+    });
+    _cdp.debugger.onResumed.listen((e) async {});
 
     // TODO(vsm): Wait properly for page to load?
     Future<void>.delayed(const Duration(milliseconds: 200), () {
