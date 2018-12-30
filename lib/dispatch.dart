@@ -51,9 +51,15 @@ class ServiceDispatcher {
       var type = p.type;
       var arg = params[p.simpleName];
       if (type is ClassMirror && type.isEnum) {
-        // TODO(vsm): Auto-convert enums.
-        throw UnimplementedError(
-            'Enum type ${type.simpleName} not yet supported.');
+        // TODO(vsm): Cache this for efficiency?
+        var values = type.getField(#values).reflectee as List;
+        for (var value in values) {
+          print('TEST: $value and $arg');
+          if ('$value'.endsWith('.$arg')) {
+            arg = value;
+            break;
+          }
+        }
       }
       if (!p.isNamed) {
         assert(!p.isOptional);
@@ -72,8 +78,8 @@ class ServiceDispatcher {
           request['params'] as Map<String, Object> ?? <String, Object>{};
       var invocation = _invocation(method, params);
       return await _this.delegate(invocation);
-    } catch (e) {
-      var error = e is RpcError ? e : RpcError.unknown('$e');
+    } catch (e, st) {
+      var error = e is RpcError ? e : RpcError.unknown('$e: $st');
       throw error;
     }
   }

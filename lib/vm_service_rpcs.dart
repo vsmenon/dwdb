@@ -3,6 +3,7 @@
 // BSD-style license that can be found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -28,6 +29,7 @@ class Service {
   Future<Breakpoint> addBreakpointWithScriptUri(
       String isolateId, String scriptUri, int line,
       {int column}) async {
+    scriptUri = _convertToBrowserUrl(scriptUri) ?? scriptUri;
     // TODO(vsm): Clean this up and factor it out.
     for (var mapping in _mappings) {
       for (var url in mapping.urls) {
@@ -40,19 +42,25 @@ class Service {
                 // FIXME
                 var fullUrl = p.join(p.dirname(scriptUri), mapping.targetUrl);
                 var scriptId = _scriptIdMap[fullUrl];
+                print('SCRIPTID: $fullUrl $scriptId (${scriptId.runtimeType})');
                 // WIP uses zero-based numbering.
                 var jsLine = lineEntry.line - 1;
 
-                var result = await _cdp.debugger
-                    .sendCommand('Debugger.setBreakpoint', params: {
-                  'location': {
-                    'scriptId': scriptId,
-                    'lineNumber': jsLine,
-                  }
-                });
+                WipResponse result;
+                try {
+                  result = await _cdp.debugger
+                      .sendCommand('Debugger.setBreakpoint', params: {
+                    'location': {
+                      'scriptId': scriptId,
+                      'lineNumber': jsLine,
+                    }
+                  });
+                } catch (e) {
+                  throw RpcError(102)..data.details = '$e';
+                }
+                var breakpointId = result.result['breakpointId'];
                 _streamNotify(
                     'Debug', Event()..kind = EventKind.BreakpointAdded);
-                print(result);
                 return Breakpoint()..id = _genId('Breakpoint');
               }
             }
@@ -60,6 +68,30 @@ class Service {
         }
       }
     }
+  }
+
+  String _convertToBrowserUrl(String fileUrl) {
+    String suffix;
+    var parts = p.split(fileUrl);
+    // TODO(vsm): How do we robustly compute the package structure we're
+    // currently in?  This can break if 'lib' or 'web' appear within the
+    // package.
+    for (var i = parts.length - 1; i > 0; --i) {
+      var part = parts[i];
+      if (part == 'lib') {
+        var package = parts[i - 1];
+        suffix = p.joinAll(parts.sublist(i +
+            1)); // p.join('packages', package, p.joinAll(parts.sublist(i + 1)));
+        break;
+      } else if (part == 'web') {
+        suffix = p.joinAll(parts.sublist(i + 1));
+      }
+    }
+    if (suffix == null) return null;
+
+    var lib = _libraries.keys
+        .firstWhere((lib) => lib.uri.endsWith(suffix), orElse: () => null);
+    return lib?.uri;
   }
 
   Future<Breakpoint> addBreakpointAtEntry(
@@ -160,7 +192,20 @@ class Service {
 
   Future<Success> setExceptionPauseMode(
       String isolateId, ExceptionPauseMode mode) async {
-    throw UnimplementedError('setExceptionPauseMode');
+    PauseState chromeMode;
+    switch (mode) {
+      case ExceptionPauseMode.All:
+        chromeMode = PauseState.all;
+        break;
+      case ExceptionPauseMode.Unhandled:
+        chromeMode = PauseState.uncaught;
+        break;
+      case ExceptionPauseMode.None:
+        chromeMode = PauseState.none;
+        break;
+    }
+    await _cdp.debugger.setPauseOnExceptions(chromeMode);
+    return Success();
   }
 
   Future<Success> setFlag(String name, String value) async {
@@ -248,14 +293,27 @@ class Service {
 
       String smUrl = script.sourceMapURL;
       if (smUrl != null && smUrl.isNotEmpty) {
+        String sourceMapContents;
+        sm.SingleMapping mapping;
         smUrl = p.join(p.dirname(script.url), smUrl);
-        smUrl = smUrl.startsWith('file://')
-            ? smUrl.substring('file://'.length)
-            : smUrl;
+        try {
+          if (smUrl.startsWith('file://')) {
+            smUrl = smUrl.substring('file://'.length);
+            sourceMapContents = await File(smUrl).readAsString();
+          } else {
+            var request = await new HttpClient().postUrl(Uri.parse(smUrl));
+            request.persistentConnection =
+                false; // Use non-persistent connection.
+            var response = await request.close();
+            sourceMapContents = await response.transform(utf8.decoder).join();
+          }
+          // This may not be a single mapping.
+          mapping = sm.parse(sourceMapContents) as sm.SingleMapping;
+        } catch (e) {
+          // No source map found.
+          return;
+        }
         _scriptIdMap[script.url] = script.scriptId;
-        final sourceMapContents = await File(smUrl).readAsString();
-        // This may not be a single mapping.
-        final mapping = sm.parse(sourceMapContents) as sm.SingleMapping;
 
         for (var src in mapping.urls) {
           // TODO(vsm): Support part files.
@@ -267,6 +325,7 @@ class Service {
           // TODO(vsm): Need a robust way to query for the root library.
           if (libraries.isEmpty) isolate.rootLib = library.toRef();
           libraries.add(library);
+          _libraries[library] = script;
         }
 
         _mappings.add(mapping);
@@ -303,7 +362,7 @@ class Service {
 
   // TODO(vsm): Make this per isolate?
   Set<WipScript> _scripts;
-  Map<Library, WipScript> _libraries;
+  Map<Library, WipScript> _libraries = {};
   final Map<String, String> _scriptIdMap = {};
   final List<sm.SingleMapping> _mappings = [];
 }
