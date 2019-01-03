@@ -334,7 +334,7 @@ class Service {
     });
 
     _cdp.debugger.onPaused.listen((e) async {
-      print('PAUSE: $e ${e.reason}');
+      print('PAUSE: $e ${e.params}');
     });
     _cdp.debugger.onResumed.listen((e) async {});
 
