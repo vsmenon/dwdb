@@ -61,7 +61,7 @@ class Service {
                 var breakpointId = result.result['breakpointId'];
                 _streamNotify(
                     'Debug', Event()..kind = EventKind.BreakpointAdded);
-                return Breakpoint()..id = _genId('Breakpoint');
+                return _createBreakpoint();
               }
             }
           }
@@ -129,13 +129,20 @@ class Service {
   }
 
   Future<ScriptList> getScripts(String isolateId) async {
-    throw UnimplementedError('getScripts');
+    Isolate isolate = await getIsolate(isolateId);
+    var libraries = isolate.getLibraries();
+    var scripts = <RefScript>[];
+    for (var lib in libraries) {
+      scripts.addAll(lib.scripts);
+    }
+    return ScriptList()..scripts = scripts;
   }
 
   Future<Object> /*VmObject|Sentinel*/ getObject(
       String isolateId, String objectId,
       {int offset, int count}) async {
-    throw UnimplementedError('getObject');
+    // TODO(vsm): Qualify to isolateId.
+    return _objectMap[objectId];
   }
 
   Future<Stack> getStack(String isolateId) async {
@@ -271,15 +278,18 @@ class Service {
     _cdp = await tab.connect();
 
     // Initialize the Dart 'VM'.
-    var isolate = Isolate();
+    var isolate = _createIsolate();
     isolate
-      ..id = _genId('Isolate')
-      ..name = tab.url
+      ..name = '${tab.url}:main()'
       ..runnable = true
       ..pauseEvent = (Event()
         ..kind = EventKind.Resume
-        ..isolate = isolate.toRef());
-    _vm = VM()..getIsolates().add(isolate);
+        ..isolate = isolate.toRef())
+      ..breakpoints = [];
+    _vm = VM()
+      ..getIsolates().add(isolate)
+      // TODO(vsm): This should be the DDC version, not the VM one.
+      ..version = Platform.version;
 
     _cdp.runtime.enable();
     await _cdp.runtime
@@ -319,9 +329,12 @@ class Service {
         for (var src in mapping.urls) {
           // TODO(vsm): Support part files.
           var dartUrl = p.join(p.dirname(script.url), src);
-          var library = Library()
-            ..id = _genId('Library')
+          // TODO(vsm): Record this properly.
+          var dartScript = _createScript()..uri = dartUrl;
+          dartScript.tokenPosTable = [];
+          var library = _createLibrary()
             ..uri = dartUrl
+            ..getScripts().add(dartScript)
             ..name = p.basenameWithoutExtension(dartUrl);
           // TODO(vsm): Need a robust way to query for the root library.
           if (libraries.isEmpty) isolate.rootLib = library.toRef();
@@ -339,7 +352,7 @@ class Service {
     _cdp.debugger.onResumed.listen((e) async {});
 
     // TODO(vsm): Wait properly for page to load?
-    Future<void>.delayed(const Duration(milliseconds: 200), () {
+    Future<void>.delayed(const Duration(milliseconds: 1000), () {
       // We delay a small amount in order to allow the script information to
       // be populated as events.
 
@@ -365,6 +378,29 @@ class Service {
   Future get ready => _initialized.future;
 
   VM _vm;
+
+  T _create<T extends VmObject>(T Function() cons) {
+    var id = _genId('$T');
+    var obj = cons()..id = id;
+    _objectMap[id] = obj;
+    return obj;
+  }
+
+  Library _createLibrary() => _create(() => Library());
+
+  Script _createScript() => _create(() => Script());
+
+  Breakpoint _createBreakpoint() => _create(() => Breakpoint());
+
+  Isolate _createIsolate() {
+    var id = _genId('Isolate');
+    var isolate = Isolate()..id = id;
+    return isolate;
+  }
+
+  // Object Map: ID => Object.
+  // TODO(vsm): Make this per isolate.
+  Map<String, VmObject> _objectMap = {};
 
   // TODO(vsm): Make this per isolate?
   Set<WipScript> _scripts;

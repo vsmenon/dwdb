@@ -44,13 +44,16 @@ class Breakpoint extends VmObject {
   // SourceLocation when breakpoint is resolved, UnresolvedSourceLocation
   // when a breakpoint is not resolved.
   Object /*SourceLocation|UnresolvedSourceLocation*/ location;
+
+  RefObject toRef() =>
+      throw UnsupportedError('Breakpoint cannot be converted to reference');
 }
 
 class RefClass extends RefObject {
-  RefClass() : super('@Class');
+  RefClass(String id, this.name) : super('@Class', id);
 
   // The name of this class.
-  String name;
+  final String name;
 }
 
 class Class extends VmObject {
@@ -102,6 +105,8 @@ class Class extends VmObject {
 
   // A list of subclasses of this class.
   List<RefClass> subclasses;
+
+  RefClass toRef() => RefClass(id, name);
 }
 
 class ClassList extends Response {
@@ -111,16 +116,16 @@ class ClassList extends Response {
 }
 
 class RefCode extends RefObject {
-  RefCode() : super('@Code');
+  RefCode(String id, this.name, this.kind) : super('@Code', id);
 
   // A name for this code object.
-  String name;
+  final String name;
 
   // What kind of code object is this?
-  CodeKind kind;
+  final CodeKind kind;
 }
 
-class Code extends RefObject {
+class Code extends VmObject {
   Code() : super('Code');
 
   // A name for this code object.
@@ -128,15 +133,17 @@ class Code extends RefObject {
 
   // What kind of code object is this?
   CodeKind kind;
+
+  RefCode toRef() => RefCode(id, name, kind);
 }
 
 enum CodeKind { Dart, Native, Stub, Tag, Collected }
 
 class RefContext extends RefObject {
-  RefContext() : super('@Context');
+  RefContext(String id, this.length) : super('@Context', id);
 
   // The number of variables in this context.
-  int length;
+  final int length;
 }
 
 class Context extends VmObject {
@@ -150,6 +157,8 @@ class Context extends VmObject {
 
   // The variables in this context object.
   List<ContextElement> variables;
+
+  RefContext toRef() => RefContext(id, length);
 }
 
 class ContextElement {
@@ -157,13 +166,13 @@ class ContextElement {
 }
 
 class RefError extends RefObject {
-  RefError() : super('@Error');
+  RefError(String id, this.kind, this.message) : super('@Error', id);
 
   // What kind of error is this?
-  ErrorKind kind;
+  final ErrorKind kind;
 
   // A description of the error.
-  String message;
+  final String message;
 }
 
 class VmError extends VmObject {
@@ -182,6 +191,8 @@ class VmError extends VmObject {
   // If this error is due to an unhandled exception, this
   // is the stacktrace object.
   RefInstance stacktrace = null;
+
+  RefError toRef() => RefError(id, kind, message);
 }
 
 enum ErrorKind {
@@ -382,29 +393,31 @@ enum EventKind {
 class ExtensionData {}
 
 class RefField extends RefObject {
-  RefField() : super('@Field');
+  RefField(String id, this.name, this.owner, this.declaredType, this.const_,
+      this.final_, this.static_)
+      : super('@Field', id);
 
   // The name of this field.
-  String name;
+  final String name;
 
   // The owner of this field, which can be either a Library or a
   // Class.
-  RefObject owner;
+  final RefObject owner;
 
   // The declared type of this field.
   //
   // The value will always be of one of the kinds:
   // Type, TypeRef, TypeParameter, BoundedType.
-  RefInstance declaredType;
+  final RefInstance declaredType;
 
   // Is this field const?
-  bool const_;
+  final bool const_;
 
   // Is this field final?
-  bool final_;
+  final bool final_;
 
   // Is this field static?
-  bool static_;
+  final bool static_;
 }
 
 class Field extends VmObject {
@@ -437,6 +450,9 @@ class Field extends VmObject {
 
   // The location of this field in the source code.
   SourceLocation location = null;
+
+  RefField toRef() =>
+      RefField(id, name, owner, declaredType, const_, final_, static_);
 }
 
 class Flag {
@@ -474,19 +490,19 @@ class Frame extends Response {
 }
 
 class RefFunction extends RefObject {
-  RefFunction() : super('@Function');
+  RefFunction(String id, this.name, this.owner, this.static_, this.const_)
+      : super('@Function', id);
 
   // The name of this function.
-  String name;
-
+  final String name;
   // The owner of this function, which can be a Library, Class, or a Function.
-  Object /*RefLibrary|RefClass|RefFunction*/ owner;
+  final Object /*RefLibrary|RefClass|RefFunction*/ owner;
 
   // Is this function static?
-  bool static_;
+  final bool static_;
 
   // Is this function const?
-  bool const_;
+  final bool const_;
 }
 
 class VmFunction extends VmObject {
@@ -503,16 +519,25 @@ class VmFunction extends VmObject {
 
   // The compiled code associated with this function.
   RefCode code = null;
+
+  // TODO(vsm): Do we need these?  Not in spec, but in ref class.
+  // Is this function static?
+  bool static_;
+
+  // Is this function const?
+  bool const_;
+
+  RefFunction toRef() => RefFunction(id, name, owner, static_, const_);
 }
 
 class RefInstance extends RefObject {
-  RefInstance() : super('@Instance');
+  RefInstance(String id, this.kind, this.class_) : super('@Instance', id);
 
   // What kind of instance is this?
-  InstanceKind kind;
+  final InstanceKind kind;
 
   // Instance references always include their class.
-  RefClass class_;
+  final RefClass class_;
 
   // The value of this instance as a String.
   //
@@ -812,6 +837,8 @@ class Instance extends VmObject {
   //   BoundedType
   //   TypeParameter
   RefInstance bound = null;
+
+  RefInstance toRef() => RefInstance(id, kind, class_);
 }
 
 enum InstanceKind {
@@ -968,13 +995,13 @@ class Isolate extends Response {
 }
 
 class RefLibrary extends RefObject {
-  RefLibrary() : super('@Library');
+  RefLibrary(String id, this.name, this.uri) : super('@Library', id);
 
   // The name of this library.
-  String name;
+  final String name;
 
   // The uri of this library.
-  String uri;
+  final String uri;
 }
 
 class Library extends VmObject {
@@ -987,13 +1014,15 @@ class Library extends VmObject {
   String uri;
 
   // Is this library debuggable? Default true.
-  bool debuggable;
+  bool debuggable = true;
 
   // A list of the imports for this library.
   List<LibraryDependency> dependencies;
 
   // A list of the scripts which constitute this library.
-  List<RefScript> scripts;
+  List<RefScript> get scripts => _scripts.map((i) => i.toRef()).toList();
+  List<Script> _scripts = [];
+  List<Script> getScripts() => _scripts;
 
   // A list of the top-level variables in this library.
   List<RefField> variables;
@@ -1004,10 +1033,7 @@ class Library extends VmObject {
   // A list of all classes in this library.
   List<RefClass> classes;
 
-  RefLibrary toRef() => RefLibrary()
-    ..id = id
-    ..name = name
-    ..uri = uri;
+  RefLibrary toRef() => RefLibrary(id, name, uri);
 }
 
 class LibraryDependency {
@@ -1054,6 +1080,9 @@ class Message extends Response {
 }
 
 class RefNull extends RefInstance {
+  RefNull(String id, InstanceKind kind, RefClass class_)
+      : super(id, kind, class_);
+
   // Always 'null'.
   String valueAsString = 'null';
 }
@@ -1061,17 +1090,19 @@ class RefNull extends RefInstance {
 class Null extends Instance {
   // Always 'null'.
   String valueAsString = 'null';
+
+  RefNull toRef() => RefNull(id, kind, class_);
 }
 
 class RefObject extends Response {
-  RefObject(String type) : super(type);
+  RefObject(String type, this.id) : super(type);
 
   // A unique identifier for an Object. Passed to the
   // getObject RPC to load this Object.
   String id;
 }
 
-class VmObject extends Response {
+abstract class VmObject extends Response {
   VmObject(String type) : super(type);
 
   // A unique identifier for an Object. Passed to the
@@ -1098,6 +1129,9 @@ class VmObject extends Response {
   // VM implementation, this occurs for small integers, which are
   // stored entirely within their object pointers.
   int size = null;
+
+  // Return a reference to this object.
+  RefObject toRef();
 }
 
 class ReloadReport extends Response {
@@ -1149,10 +1183,10 @@ enum SentinelKind {
 enum FrameKind { Regular, AsyncCausal, AsyncSuspensionMarker, AsyncActivation }
 
 class RefScript extends RefObject {
-  RefScript() : super('@Script');
+  RefScript(String id, this.uri) : super('@Script', id);
 
   // The uri from which this script was loaded.
-  String uri;
+  final String uri;
 }
 
 class Script extends VmObject {
@@ -1170,6 +1204,8 @@ class Script extends VmObject {
 
   // A table encoding a mapping from token position to line and column.
   List<List<int>> tokenPosTable;
+
+  RefScript toRef() => RefScript(id, uri);
 }
 
 class ScriptList extends Response {
@@ -1280,7 +1316,7 @@ class Success extends Response {
 class TimelineEvent {}
 
 class RefTypeArguments extends RefObject {
-  RefTypeArguments() : super('@TypeArguments');
+  RefTypeArguments(String id, this.name) : super('@TypeArguments', id);
 
   // A name for this type argument list.
   String name;
@@ -1297,6 +1333,8 @@ class TypeArguments extends VmObject {
   // The value will always be one of the kinds:
   // Type, TypeRef, TypeParameter, BoundedType.
   List<RefInstance> types;
+
+  RefTypeArguments toRef() => RefTypeArguments(id, name);
 }
 
 class UnresolvedSourceLocation extends Response {
