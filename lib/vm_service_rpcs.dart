@@ -20,15 +20,70 @@ typedef StreamNotifier = void Function(String, Event);
  * 
  * Version 3.13
  */
+
 class Service {
   Future<Breakpoint> addBreakpoint(String isolateId, String scriptId, int line,
       {int column}) async {
-    throw UnimplementedError('addBreakpoint');
+    var script = _getScriptById(isolateId, scriptId);
+    var scriptUri = script.uri;
+    return addBreakpointWithScriptUri(isolateId, scriptUri, line,
+        column: column);
+  }
+
+  RefScript _getScriptById(String isolateId, String scriptId) {
+    var scripts = _getScripts(isolateId);
+    for (var script in scripts) {
+      if (script.id == scriptId) {
+        return script;
+      }
+    }
+    return null;
+  }
+
+  SourceLocation _mapToSourceLocation(
+      Isolate isolate, String jsId, int jsLine, int jsColumn) {
+    return null;
+    /*
+    // TODO(vsm): Fix this to be reasonably efficient.
+    var script = _getScriptById(isolateId, scriptId);
+    for (var mapping in _mappings) {
+      mapping.
+    }
+    return SourceLocation()..script = script;
+    */
+  }
+
+  List<List<int>> _sourceMappingToTokenPosTable(
+      sm.SingleMapping mapping, String uri) {
+    var sourceUriId = mapping.urls.indexOf(uri);
+    if (sourceUriId < 0) {
+      print('NO SOURCE MAP: $uri');
+      return [];
+    }
+
+    var table = <List<int>>[];
+    var tokenPos = 100;
+    var currentLine = -1;
+    List<int> current = null;
+    for (var lineEntry in mapping.lines) {
+      for (var entry in lineEntry.entries) {
+        if (entry.sourceUrlId != sourceUriId) continue;
+        var line = entry.sourceLine;
+        if (line != currentLine) {
+          currentLine = line;
+          current = [line];
+          table.add(current);
+        }
+        current.addAll([tokenPos++, entry.sourceColumn]);
+      }
+    }
+    return table;
   }
 
   Future<Breakpoint> addBreakpointWithScriptUri(
       String isolateId, String scriptUri, int line,
       {int column}) async {
+    Isolate isolate = await getIsolate(isolateId);
     scriptUri = _convertToBrowserUrl(scriptUri) ?? scriptUri;
     // TODO(vsm): Clean this up and factor it out.
     for (var mapping in _mappings) {
@@ -59,9 +114,23 @@ class Service {
                   throw RpcError(102)..data.details = '$e';
                 }
                 var breakpointId = result.result['breakpointId'];
+                Map<String, dynamic> actualLocation =
+                    result.result['actualLocation'];
+                scriptId = actualLocation['scriptId'];
+                jsLine = actualLocation['lineNumber'];
+                var jsColumn = actualLocation['columnNumber'];
+                var location =
+                    _mapToSourceLocation(isolate, scriptId, jsLine, jsColumn);
+
+                print(result.result);
+                var breakpoint = _createBreakpoint()..resolved = true;
                 _streamNotify(
-                    'Debug', Event()..kind = EventKind.BreakpointAdded);
-                return _createBreakpoint();
+                    'Debug',
+                    Event()
+                      ..kind = EventKind.BreakpointAdded
+                      ..isolate = isolate.toRef()
+                      ..breakpoint = breakpoint);
+                return breakpoint;
               }
             }
           }
@@ -120,7 +189,7 @@ class Service {
     throw UnimplementedError('getFlagList');
   }
 
-  Future<Object> /*Isolate|Sentinel*/ getIsolate(String isolateId) async {
+  Object _getIsolate(String isolateId) {
     var isolate = _vm
         .getIsolates()
         .firstWhere((i) => i.id == isolateId, orElse: () => null);
@@ -128,13 +197,22 @@ class Service {
     return isolate ?? Sentinel();
   }
 
-  Future<ScriptList> getScripts(String isolateId) async {
-    Isolate isolate = await getIsolate(isolateId);
+  Future<Object> /*Isolate|Sentinel*/ getIsolate(String isolateId) async {
+    return _getIsolate(isolateId);
+  }
+
+  List<RefScript> _getScripts(String isolateId) {
+    Isolate isolate = _getIsolate(isolateId);
     var libraries = isolate.getLibraries();
     var scripts = <RefScript>[];
     for (var lib in libraries) {
       scripts.addAll(lib.scripts);
     }
+    return scripts;
+  }
+
+  Future<ScriptList> getScripts(String isolateId) async {
+    var scripts = _getScripts(isolateId);
     return ScriptList()..scripts = scripts;
   }
 
@@ -265,6 +343,24 @@ class Service {
   int _objectId = 0;
   String _genId([String prefix = 'object']) => '$prefix/${_objectId++}';
 
+  Future<String> _fetch(String uri) async {
+    try {
+      if (uri.startsWith('file://')) {
+        uri = uri.substring('file://'.length);
+        return await File(uri).readAsString();
+      } else {
+        var request = await new HttpClient().postUrl(Uri.parse(uri));
+        request.persistentConnection = false; // Use non-persistent connection.
+        var response = await request.close();
+        return response.statusCode != HttpStatus.notFound
+            ? response.transform(utf8.decoder).join()
+            : null;
+      }
+    } catch (e) {
+      return null;
+    }
+  }
+
   void _initialize() async {
     // TODO(vsm): For now, we find the first user tab and assume that's the one
     // to debug.  We also assume this is the one, single Dart isolate for now.
@@ -279,12 +375,13 @@ class Service {
 
     // Initialize the Dart 'VM'.
     var isolate = _createIsolate();
+    var isolateRef = isolate.toRef();
     isolate
       ..name = '${tab.url}:main()'
       ..runnable = true
       ..pauseEvent = (Event()
         ..kind = EventKind.Resume
-        ..isolate = isolate.toRef())
+        ..isolate = isolateRef)
       ..breakpoints = [];
     _vm = VM()
       ..getIsolates().add(isolate)
@@ -294,58 +391,60 @@ class Service {
     _cdp.runtime.enable();
     await _cdp.runtime
         .evaluate('console.log("Dart Web Debugger Proxy Running")');
+    _cdp.runtime.onConsoleAPICalled.listen((e) {
+      var args = e.params['args'] as List;
+      var item = args[0] as Map;
+      var value = '${item["value"]}\n';
+      _streamNotify(
+          'Stdout',
+          Event()
+            ..kind = EventKind.WriteEvent
+            ..isolate = isolateRef
+            ..bytes = base64.encode(value.codeUnits));
+    });
 
     // Parse and map script in the browser back to Dart libraries.
     _cdp.debugger.enable();
-    _cdp.debugger.onScriptParsed.listen((ScriptParsedEvent e) async {
+    _cdp.debugger.onScriptParsed.listen((e) async {
       final WipScript script = e.script;
       var isolate = _vm.getIsolates().first;
       var libraries = isolate.getLibraries();
 
       String smUrl = script.sourceMapURL;
       if (smUrl != null && smUrl.isNotEmpty) {
-        String sourceMapContents;
         sm.SingleMapping mapping;
         smUrl = p.join(p.dirname(script.url), smUrl);
-        try {
-          if (smUrl.startsWith('file://')) {
-            smUrl = smUrl.substring('file://'.length);
-            sourceMapContents = await File(smUrl).readAsString();
-          } else {
-            var request = await new HttpClient().postUrl(Uri.parse(smUrl));
-            request.persistentConnection =
-                false; // Use non-persistent connection.
-            var response = await request.close();
-            sourceMapContents = await response.transform(utf8.decoder).join();
-          }
+        String sourceMapContents = await _fetch(smUrl);
+        if (sourceMapContents != null) {
           // This may not be a single mapping.
           mapping = sm.parse(sourceMapContents) as sm.SingleMapping;
-        } catch (e) {
-          // No source map found.
-          return;
-        }
-        _scriptIdMap[script.url] = script.scriptId;
 
-        for (var src in mapping.urls) {
-          // TODO(vsm): Support part files.
-          var dartUrl = p.join(p.dirname(script.url), src);
-          // TODO(vsm): Record this properly.
-          var dartScript = _createScript()..uri = dartUrl;
-          dartScript.tokenPosTable = [];
-          var library = _createLibrary()
-            ..uri = dartUrl
-            ..getScripts().add(dartScript)
-            ..name = p.basenameWithoutExtension(dartUrl);
-          // TODO(vsm): Need a robust way to query for the root library.
-          if (libraries.isEmpty) isolate.rootLib = library.toRef();
-          libraries.add(library);
-          _libraries[library] = script;
+          _scriptIdMap[script.url] = script.scriptId;
+
+          for (var src in mapping.urls) {
+            // TODO(vsm): Support part files.
+            var dartUrl = p.join(p.dirname(script.url), src);
+            // TODO(vsm): Record this properly.
+            var dartSource = await _fetch(dartUrl);
+            if (dartSource == null) continue;
+            var dartScript = _createScript()
+              ..uri = dartUrl
+              ..tokenPosTable = _sourceMappingToTokenPosTable(mapping, src)
+              ..source = dartSource;
+            var library = _createLibrary()
+              ..uri = dartUrl
+              ..getScripts().add(dartScript)
+              ..name = p.basenameWithoutExtension(dartUrl);
+            // TODO(vsm): Need a robust way to query for the root library.
+            if (libraries.isEmpty) isolate.rootLib = library.toRef();
+            libraries.add(library);
+            _libraries[library] = script;
+          }
         }
 
         _mappings.add(mapping);
       }
     });
-
     _cdp.debugger.onPaused.listen((e) async {
       print('PAUSE: $e ${e.params}');
     });
