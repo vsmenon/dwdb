@@ -27,11 +27,12 @@ class Service {
       {int column}) async {
     var isolate = _getIsolate(isolateId) as Isolate;
     var jsId = _dartIdToJsId[script.id];
-    var locationData = _jsIdToLocationData[jsId].dartLocations[script.uri];
+    var locations = _jsIdToLocationData[jsId];
+    var locationData = locations.dartLocations[script.uri];
 
     for (var location in locationData) {
       // Match first line hit for now.
-      if (line >= location.dartLine) {
+      if (location.dartLine >= line) {
         WipResponse result;
         try {
           result = await _cdp.debugger
@@ -181,7 +182,7 @@ class Service {
   }
 
   Future<Stack> getStack(String isolateId) async {
-    throw UnimplementedError('getStack');
+    return _pausedStack;
   }
 
   Future<SourceReport> getSourceReport(
@@ -227,7 +228,23 @@ class Service {
       {StepOption step, int frameIndex}) async {
     // TODO(vsm): Support multiple isolates.
     if (_vm.isolates.first.id == isolateId) {
-      await _cdp.debugger.resume();
+      if (step == null) {
+        await _cdp.debugger.resume();
+      } else {
+        switch (step) {
+          case StepOption.Into:
+            await _cdp.debugger.stepInto();
+            break;
+          case StepOption.Out:
+            await _cdp.debugger.stepOut();
+            break;
+          case StepOption.Over:
+            await _cdp.debugger.stepOver();
+            break;
+          default:
+          // TODO(vsm): ...
+        }
+      }
     }
     return Success();
   }
@@ -366,11 +383,48 @@ class Service {
       _processJsScript(e.script);
     });
     _cdp.debugger.onPaused.listen((e) async {
-      // TODO(vsm): Trigger pause event.
-      print('PAUSE: $e ${e.params}');
+      var params = e.params;
+      var event = Event()..isolate = isolateRef;
+      var breakpoints = params['hitBreakpoints'] as List;
+      if (breakpoints.isNotEmpty) {
+        // Use the first one for now.
+        var jsBreakpoint = breakpoints.first;
+        var dartBreakpoint = _jsBreakpointIdToDartId[jsBreakpoint];
+        var breakpoint = _objectMap[dartBreakpoint] as Breakpoint;
+        event
+          ..kind = EventKind.PauseBreakpoint
+          ..breakpoint = breakpoint
+          ..pauseBreakpoints = [breakpoint];
+      } else if (e.reason == "exception" || e.reason == "assert") {
+        event.kind = EventKind.PauseException;
+      } else {
+        event.kind = EventKind.PauseInterrupted;
+      }
+
+      // var jsFrames = e.getCallFrames().toList();
+      var jsFrames = e.params['callFrames']
+          .map((frame) => new WipCallFrame(frame))
+          .toList();
+      var dartFrames = <Frame>[];
+      int index = 0;
+      for (var jsFrame in jsFrames) {
+        var dartFrame = _mapFrame(jsFrame);
+        if (dartFrame != null) {
+          dartFrames.add(dartFrame..index = index++);
+        }
+      }
+      _pausedStack = Stack()
+        ..frames = dartFrames
+        ..messages = [];
+      _streamNotify('Debug', event);
     });
     _cdp.debugger.onResumed.listen((e) async {
-      // TODO(vsm): Trigger resume event.
+      _pausedStack = null;
+      _streamNotify(
+          'Debug',
+          Event()
+            ..kind = EventKind.Resume
+            ..isolate = isolateRef);
     });
 
     // TODO(vsm): Wait properly for page to load?
@@ -384,6 +438,37 @@ class Service {
 
   void _streamNotify(String streamId, Event e) {
     if (_subscribedStreams.contains(streamId)) _streamNotifier(streamId, e);
+  }
+
+  Frame _mapFrame(WipCallFrame jsFrame) {
+    var jsLocation = jsFrame.location;
+    var jsId = jsLocation.scriptId;
+    print(jsFrame);
+    print(jsId);
+    var jsLine = jsLocation.lineNumber;
+    print(jsLine);
+    var jsColumn = jsLocation.columnNumber;
+    var locationData = _jsIdToLocationData[jsId];
+    var locations = locationData.dartLocations;
+    for (var dartUrl in locations.keys) {
+      for (var location in locations[dartUrl]) {
+        if (location.jsLine > jsLine) {
+          // TODO(vsm): Look for best match.
+          print("Mapped frame to $dartUrl:${location.dartLine}");
+          var script = _dartUrlToScript[dartUrl];
+          if (script != null) {
+            return Frame()
+              ..code = (RefCode('dummy', jsFrame.functionName, CodeKind.Dart))
+              ..location = (SourceLocation()
+                ..tokenPos = location.dartTokenPos
+                ..script = script?.toRef())
+              ..kind = FrameKind.Regular;
+          }
+        }
+      }
+    }
+    print('Failed');
+    return null;
   }
 
   // Chrome Debug Protocol Connection.
@@ -439,6 +524,8 @@ class Service {
           var jsUrl = jsScript.url;
 
           _jsUrlToJsId[jsUrl] = jsId;
+          var locationData = DartLocationData(jsUrl, jsId, mapping);
+          _jsIdToLocationData[jsId] = locationData;
 
           for (var src in mapping.urls) {
             // TODO(vsm): Support part files.
@@ -446,13 +533,13 @@ class Service {
             // TODO(vsm): Record this properly.
             var dartSource = await _fetch(dartUrl);
             if (dartSource == null) continue;
-            var locationData = DartLocationData(jsId, mapping);
-            _jsIdToLocationData[jsId] = locationData;
+
             var dartScript = _createScript()
               ..uri = dartUrl
               ..tokenPosTable = locationData.dartUrlToTokenPosTable[dartUrl]
               ..source = dartSource;
-            _dartIdToJsId[dartScript.id] = jsUrl;
+            _dartIdToJsId[dartScript.id] = jsId;
+            _dartUrlToScript[dartUrl] = dartScript;
             var library = _createLibrary()
               ..uri = dartUrl
               ..getScripts().add(dartScript)
@@ -486,6 +573,7 @@ class Service {
   // Breakpoints
   final Map<String, String> _jsBreakpointIdToDartId = {};
   final Map<String, String> _dartBreakpointIdToJsId = {};
+  Stack _pausedStack = null;
 }
 
 class RpcErrorData {
@@ -511,9 +599,11 @@ class RpcError {
 
 // Dart Location data corresponding to a single JS Script.
 class DartLocationData {
-  DartLocationData(String jsScriptId, this.mapping) {
+  DartLocationData(String jsUrl, String jsScriptId, this.mapping) {
     var tokenPos = 100;
     var currentLine = -1;
+
+    var parent = p.dirname(jsUrl);
 
     // TODO(vsm): Does this need to be sorted?
     List<List<int>> tokenPosTable;
@@ -522,11 +612,14 @@ class DartLocationData {
     for (var lineEntry in mapping.lines) {
       for (var entry in lineEntry.entries) {
         var index = entry.sourceUrlId;
-        var dartUrl = mapping.urls[index];
+        var dartUrl = p.join(parent, mapping.urls[index]);
         tokenPosTable = dartUrlToTokenPosTable.putIfAbsent(dartUrl, () => []);
         dartLocationList = dartLocations.putIfAbsent(dartUrl, () => []);
         var dartLine = entry.sourceLine;
         var dartColumn = entry.sourceColumn;
+
+        // TODO(vsm): This is broken - assumes Dart is laid out contiguously
+        // in JS.
         if (dartLine != currentLine) {
           currentLine = dartLine;
           current = [dartLine];
