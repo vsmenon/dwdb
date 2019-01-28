@@ -23,7 +23,7 @@ typedef StreamNotifier = void Function(String, Event);
 
 class Service {
   Future<Breakpoint> _addBreakpoint(
-      String isolateId, RefScript script, int line,
+      String isolateId, ScriptRef script, int line,
       {int column}) async {
     var isolate = _getIsolate(isolateId) as Isolate;
     var jsId = _dartIdToJsId[script.id];
@@ -77,7 +77,7 @@ class Service {
     return _addBreakpoint(isolateId, script, line, column: column);
   }
 
-  RefScript _getScriptById(String isolateId, String scriptId) {
+  ScriptRef _getScriptById(String isolateId, String scriptId) {
     var scripts = _getScripts(isolateId);
     for (var script in scripts) {
       if (script.id == scriptId) {
@@ -126,18 +126,18 @@ class Service {
     throw UnimplementedError('addBreakpointAtEntry');
   }
 
-  Future<Object> /*RefInstance|RefError|Sentinel*/ invoke(String isolateId,
+  Future<Object> /*InstanceRef|ErrorRef|Sentinel*/ invoke(String isolateId,
       String targetId, String selector, List<String> argumentIds) async {
     throw UnimplementedError('invoke');
   }
 
-  Future<Object> /*RefInstance|RefError|Sentinel*/ evaluate(
+  Future<Object> /*InstanceRef|ErrorRef|Sentinel*/ evaluate(
       String isolateId, String targetId, String expression,
       {Map<String, String> scope}) async {
     throw UnimplementedError('evaluate');
   }
 
-  Future<Object> /*RefInstance|RefError|Sentinel*/ evaluateInFrame(
+  Future<Object> /*InstanceRef|ErrorRef|Sentinel*/ evaluateInFrame(
       String isolateId, int frameIndex, String expression,
       {Map<String, String> scope}) async {
     throw UnimplementedError('evaluateInFrame');
@@ -159,10 +159,10 @@ class Service {
     return _getIsolate(isolateId);
   }
 
-  List<RefScript> _getScripts(String isolateId) {
+  List<ScriptRef> _getScripts(String isolateId) {
     Isolate isolate = _getIsolate(isolateId);
     var libraries = isolate.getLibraries();
-    var scripts = <RefScript>[];
+    var scripts = <ScriptRef>[];
     for (var lib in libraries) {
       scripts.addAll(lib.scripts);
     }
@@ -174,8 +174,7 @@ class Service {
     return ScriptList()..scripts = scripts;
   }
 
-  Future<Object> /*VmObject|Sentinel*/ getObject(
-      String isolateId, String objectId,
+  Future<Object> /*Obj|Sentinel*/ getObject(String isolateId, String objectId,
       {int offset, int count}) async {
     // TODO(vsm): Qualify to isolateId.
     return _objectMap[objectId];
@@ -458,7 +457,7 @@ class Service {
           var script = _dartUrlToScript[dartUrl];
           if (script != null) {
             return Frame()
-              ..code = (RefCode('dummy', jsFrame.functionName, CodeKind.Dart))
+              ..code = (CodeRef('dummy', jsFrame.functionName, CodeKind.Dart))
               ..location = (SourceLocation()
                 ..tokenPos = location.dartTokenPos
                 ..script = script?.toRef())
@@ -486,7 +485,7 @@ class Service {
 
   VM _vm;
 
-  T _create<T extends VmObject>(T Function() cons) {
+  T _create<T extends Obj>(T Function() cons) {
     var id = _genId('$T');
     var obj = cons()..id = id;
     _objectMap[id] = obj;
@@ -558,7 +557,7 @@ class Service {
 
   // Object Map: ID => Object.
   // TODO(vsm): Make this per isolate.
-  final Map<String, VmObject> _objectMap = {};
+  final Map<String, Obj> _objectMap = {};
 
   // JS Script ID to ..
   final Map<String, Set<Library>> _jsIdToLibraries = {};

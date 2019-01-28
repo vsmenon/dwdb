@@ -10,13 +10,13 @@
  */
 
 class BoundField {
-  RefField decl;
-  Object /*RefInstance|Sentinel*/ value;
+  FieldRef decl;
+  Object /*InstanceRef|Sentinel*/ value;
 }
 
 class BoundVariable {
   String name;
-  Object /*RefInstance|RefTypeArguments|Sentinel*/ value;
+  Object /*InstanceRef|TypeArgumentsRef|Sentinel*/ value;
 
   // The token position where this variable was declared.
   int declarationTokenPos;
@@ -28,7 +28,7 @@ class BoundVariable {
   int scopeEndTokenPos;
 }
 
-class Breakpoint extends VmObject {
+class Breakpoint extends Obj {
   Breakpoint() : super('Breakpoint');
 
   // A number identifying this breakpoint to the user.
@@ -45,25 +45,25 @@ class Breakpoint extends VmObject {
   // when a breakpoint is not resolved.
   Object /*SourceLocation|UnresolvedSourceLocation*/ location;
 
-  RefObject toRef() =>
+  ObjRef toRef() =>
       throw UnsupportedError('Breakpoint cannot be converted to reference');
 }
 
-class RefClass extends RefObject {
-  RefClass(String id, this.name) : super('@Class', id);
+class ClassRef extends ObjRef {
+  ClassRef(String id, this.name) : super('@Class', id);
 
   // The name of this class.
   final String name;
 }
 
-class Class extends VmObject {
+class Class extends Obj {
   Class() : super('Class');
 
   // The name of this class.
   String name;
 
   // The error which occurred during class finalization, if it exists.
-  RefError error = null;
+  ErrorRef error = null;
 
   // Is this an abstract class?
   bool abstract_;
@@ -72,51 +72,51 @@ class Class extends VmObject {
   bool const_;
 
   // The library which contains this class.
-  RefLibrary library;
+  LibraryRef library;
 
   // The location of this class in the source code.
   SourceLocation location = null;
 
   // The superclass of this class, if any.
-  RefClass super_ = null;
+  ClassRef super_ = null;
 
   // The supertype for this class, if any.
   //
   // The value will be of the kind: Type.
-  RefInstance superType = null;
+  InstanceRef superType = null;
 
   // A list of interface types for this class.
   //
   // The values will be of the kind: Type.
-  List<RefInstance> interfaces;
+  List<InstanceRef> interfaces;
 
   // The mixin type for this class, if any.
   //
   // The value will be of the kind: Type.
-  RefInstance mixin = null;
+  InstanceRef mixin = null;
 
   // A list of fields in this class. Does not include fields from
   // superclasses.
-  List<RefField> fields;
+  List<FieldRef> fields;
 
   // A list of functions in this class. Does not include functions
   // from superclasses.
-  List<RefFunction> functions;
+  List<FuncRef> functions;
 
   // A list of subclasses of this class.
-  List<RefClass> subclasses;
+  List<ClassRef> subclasses;
 
-  RefClass toRef() => RefClass(id, name);
+  ClassRef toRef() => ClassRef(id, name);
 }
 
 class ClassList extends Response {
   ClassList() : super('ClassList');
 
-  List<RefClass> classes;
+  List<ClassRef> classes;
 }
 
-class RefCode extends RefObject {
-  RefCode(String id, this.name, this.kind) : super('@Code', id);
+class CodeRef extends ObjRef {
+  CodeRef(String id, this.name, this.kind) : super('@Code', id);
 
   // A name for this code object.
   final String name;
@@ -125,7 +125,7 @@ class RefCode extends RefObject {
   final CodeKind kind;
 }
 
-class Code extends VmObject {
+class Code extends Obj {
   Code() : super('Code');
 
   // A name for this code object.
@@ -134,19 +134,19 @@ class Code extends VmObject {
   // What kind of code object is this?
   CodeKind kind;
 
-  RefCode toRef() => RefCode(id, name, kind);
+  CodeRef toRef() => CodeRef(id, name, kind);
 }
 
 enum CodeKind { Dart, Native, Stub, Tag, Collected }
 
-class RefContext extends RefObject {
-  RefContext(String id, this.length) : super('@Context', id);
+class ContextRef extends ObjRef {
+  ContextRef(String id, this.length) : super('@Context', id);
 
   // The number of variables in this context.
   final int length;
 }
 
-class Context extends VmObject {
+class Context extends Obj {
   Context() : super('Context');
 
   // The number of variables in this context.
@@ -158,15 +158,15 @@ class Context extends VmObject {
   // The variables in this context object.
   List<ContextElement> variables;
 
-  RefContext toRef() => RefContext(id, length);
+  ContextRef toRef() => ContextRef(id, length);
 }
 
 class ContextElement {
-  Object /*RefInstance|Sentinel*/ value;
+  Object /*InstanceRef|Sentinel*/ value;
 }
 
-class RefError extends RefObject {
-  RefError(String id, this.kind, this.message) : super('@Error', id);
+class ErrorRef extends ObjRef {
+  ErrorRef(String id, this.kind, this.message) : super('@Error', id);
 
   // What kind of error is this?
   final ErrorKind kind;
@@ -175,8 +175,8 @@ class RefError extends RefObject {
   final String message;
 }
 
-class VmError extends VmObject {
-  VmError() : super('Error');
+class Error extends Obj {
+  Error() : super('Error');
 
   // What kind of error is this?
   ErrorKind kind;
@@ -186,13 +186,13 @@ class VmError extends VmObject {
 
   // If this error is due to an unhandled exception, this
   // is the exception thrown.
-  RefInstance exception = null;
+  InstanceRef exception = null;
 
   // If this error is due to an unhandled exception, this
   // is the stacktrace object.
-  RefInstance stacktrace = null;
+  InstanceRef stacktrace = null;
 
-  RefError toRef() => RefError(id, kind, message);
+  ErrorRef toRef() => ErrorRef(id, kind, message);
 }
 
 enum ErrorKind {
@@ -220,13 +220,13 @@ class Event extends Response {
   //
   // This is provided for all event kinds except for:
   //   VMUpdate
-  RefIsolate isolate = null;
+  IsolateRef isolate = null;
 
   // The vm with which this event is associated.
   //
   // This is provided for the event kind:
   //   VMUpdate
-  RefVM vm = null;
+  VMRef vm = null;
 
   // The timestamp (in milliseconds since the epoch) associated with this event.
   // For some isolate pause events, the timestamp is from when the isolate was
@@ -272,7 +272,7 @@ class Event extends Response {
 
   // The exception associated with this event, if this is a
   // PauseException event.
-  RefInstance exception = null;
+  InstanceRef exception = null;
 
   // An array of bytes, encoded as a base64 String.
   //
@@ -282,7 +282,7 @@ class Event extends Response {
   // The argument passed to dart:developer.inspect.
   //
   // This is provided for the Inspect event.
-  RefInstance inspectee = null;
+  InstanceRef inspectee = null;
 
   // The RPC name of the extension that was added.
   //
@@ -392,8 +392,8 @@ enum EventKind {
 
 class ExtensionData {}
 
-class RefField extends RefObject {
-  RefField(String id, this.name, this.owner, this.declaredType, this.const_,
+class FieldRef extends ObjRef {
+  FieldRef(String id, this.name, this.owner, this.declaredType, this.const_,
       this.final_, this.static_)
       : super('@Field', id);
 
@@ -402,13 +402,13 @@ class RefField extends RefObject {
 
   // The owner of this field, which can be either a Library or a
   // Class.
-  final RefObject owner;
+  final ObjRef owner;
 
   // The declared type of this field.
   //
   // The value will always be of one of the kinds:
   // Type, TypeRef, TypeParameter, BoundedType.
-  final RefInstance declaredType;
+  final InstanceRef declaredType;
 
   // Is this field const?
   final bool const_;
@@ -420,7 +420,7 @@ class RefField extends RefObject {
   final bool static_;
 }
 
-class Field extends VmObject {
+class Field extends Obj {
   Field() : super('Field');
 
   // The name of this field.
@@ -428,13 +428,13 @@ class Field extends VmObject {
 
   // The owner of this field, which can be either a Library or a
   // Class.
-  RefObject owner;
+  ObjRef owner;
 
   // The declared type of this field.
   //
   // The value will always be of one of the kinds:
   // Type, TypeRef, TypeParameter, BoundedType.
-  RefInstance declaredType;
+  InstanceRef declaredType;
 
   // Is this field const?
   bool const_;
@@ -446,13 +446,13 @@ class Field extends VmObject {
   bool static_;
 
   // The value of this field, if the field is static.
-  RefInstance staticValue = null;
+  InstanceRef staticValue = null;
 
   // The location of this field in the source code.
   SourceLocation location = null;
 
-  RefField toRef() =>
-      RefField(id, name, owner, declaredType, const_, final_, static_);
+  FieldRef toRef() =>
+      FieldRef(id, name, owner, declaredType, const_, final_, static_);
 }
 
 class Flag {
@@ -482,21 +482,21 @@ class Frame extends Response {
   Frame() : super('Frame');
 
   int index;
-  RefFunction function = null;
-  RefCode code = null;
+  FuncRef function = null;
+  CodeRef code = null;
   SourceLocation location = null;
   List<BoundVariable> vars = null;
   FrameKind kind = null;
 }
 
-class RefFunction extends RefObject {
-  RefFunction(String id, this.name, this.owner, this.static_, this.const_)
+class FuncRef extends ObjRef {
+  FuncRef(String id, this.name, this.owner, this.static_, this.const_)
       : super('@Function', id);
 
   // The name of this function.
   final String name;
   // The owner of this function, which can be a Library, Class, or a Function.
-  final Object /*RefLibrary|RefClass|RefFunction*/ owner;
+  final Object /*LibraryRef|ClassRef|FuncRef*/ owner;
 
   // Is this function static?
   final bool static_;
@@ -505,20 +505,20 @@ class RefFunction extends RefObject {
   final bool const_;
 }
 
-class VmFunction extends VmObject {
-  VmFunction() : super('Function');
+class Func extends Obj {
+  Func() : super('Function');
 
   // The name of this function.
   String name;
 
   // The owner of this function, which can be a Library, Class, or a Function.
-  Object /*RefLibrary|RefClass|RefFunction*/ owner;
+  Object /*LibraryRef|ClassRef|FuncRef*/ owner;
 
   // The location of this function in the source code.
   SourceLocation location = null;
 
   // The compiled code associated with this function.
-  RefCode code = null;
+  CodeRef code = null;
 
   // TODO(vsm): Do we need these?  Not in spec, but in ref class.
   // Is this function static?
@@ -527,17 +527,17 @@ class VmFunction extends VmObject {
   // Is this function const?
   bool const_;
 
-  RefFunction toRef() => RefFunction(id, name, owner, static_, const_);
+  FuncRef toRef() => FuncRef(id, name, owner, static_, const_);
 }
 
-class RefInstance extends RefObject {
-  RefInstance(String id, this.kind, this.class_) : super('@Instance', id);
+class InstanceRef extends ObjRef {
+  InstanceRef(String id, this.kind, this.class_) : super('@Instance', id);
 
   // What kind of instance is this?
   final InstanceKind kind;
 
   // Instance references always include their class.
-  final RefClass class_;
+  final ClassRef class_;
 
   // The value of this instance as a String.
   //
@@ -592,13 +592,13 @@ class RefInstance extends RefObject {
   //
   // Provided for instance kinds:
   //   Type
-  RefClass typeClass = null;
+  ClassRef typeClass = null;
 
   // The parameterized class of a type parameter:
   //
   // Provided for instance kinds:
   //   TypeParameter
-  RefClass parameterizedClass = null;
+  ClassRef parameterizedClass = null;
 
   // The pattern of a RegExp instance.
   //
@@ -606,17 +606,17 @@ class RefInstance extends RefObject {
   //
   // Provided for instance kinds:
   //   RegExp
-  RefInstance pattern = null;
+  InstanceRef pattern = null;
 }
 
-class Instance extends VmObject {
+class Instance extends Obj {
   Instance() : super('Instance');
 
   // What kind of instance is this?
   InstanceKind kind;
 
   // Instance references always include their class.
-  RefClass class_;
+  ClassRef class_;
 
   // The value of this instance as a String.
   //
@@ -712,13 +712,13 @@ class Instance extends VmObject {
   //
   // Provided for instance kinds:
   //   Type
-  RefClass typeClass = null;
+  ClassRef typeClass = null;
 
   // The parameterized class of a type parameter:
   //
   // Provided for instance kinds:
   //   TypeParameter
-  RefClass parameterizedClass = null;
+  ClassRef parameterizedClass = null;
 
   // The fields of this Instance.
   List<BoundField> fields = null;
@@ -727,7 +727,7 @@ class Instance extends VmObject {
   //
   // Provided for instance kinds:
   //   List
-  List<Object /*RefInstance|Sentinel*/ > elements = null;
+  List<Object /*InstanceRef|Sentinel*/ > elements = null;
 
   // The elements of a Map instance.
   //
@@ -760,19 +760,19 @@ class Instance extends VmObject {
   //
   // Provided for instance kinds:
   //   Closure
-  RefFunction closureFunction = null;
+  FuncRef closureFunction = null;
 
   // The context associated with a Closure instance.
   //
   // Provided for instance kinds:
   //   Closure
-  RefContext closureContext = null;
+  ContextRef closureContext = null;
 
   // The referent of a MirrorReference instance.
   //
   // Provided for instance kinds:
   //   MirrorReference
-  RefInstance mirrorReferent = null;
+  InstanceRef mirrorReferent = null;
 
   // The pattern of a RegExp instance.
   //
@@ -796,19 +796,19 @@ class Instance extends VmObject {
   //
   // Provided for instance kinds:
   //   WeakProperty
-  RefInstance propertyKey = null;
+  InstanceRef propertyKey = null;
 
   // The key for a WeakProperty instance.
   //
   // Provided for instance kinds:
   //   WeakProperty
-  RefInstance propertyValue = null;
+  InstanceRef propertyValue = null;
 
   // The type arguments for this type.
   //
   // Provided for instance kinds:
   //   Type
-  RefTypeArguments typeArguments = null;
+  TypeArgumentsRef typeArguments = null;
 
   // The index of a TypeParameter instance.
   //
@@ -826,7 +826,7 @@ class Instance extends VmObject {
   // Provided for instance kinds:
   //   BoundedType
   //   TypeRef
-  RefInstance targetType = null;
+  InstanceRef targetType = null;
 
   // The bound of a TypeParameter or BoundedType.
   //
@@ -836,9 +836,9 @@ class Instance extends VmObject {
   // Provided for instance kinds:
   //   BoundedType
   //   TypeParameter
-  RefInstance bound = null;
+  InstanceRef bound = null;
 
-  RefInstance toRef() => RefInstance(id, kind, class_);
+  InstanceRef toRef() => InstanceRef(id, kind, class_);
 }
 
 enum InstanceKind {
@@ -919,8 +919,8 @@ enum InstanceKind {
   BoundedType,
 }
 
-class RefIsolate extends Response {
-  RefIsolate() : super('@Isolate');
+class IsolateRef extends Response {
+  IsolateRef() : super('@Isolate');
 
   // The id which is passed to the getIsolate RPC to load this isolate.
   String id;
@@ -966,12 +966,12 @@ class Isolate extends Response {
   // The root library for this isolate.
   //
   // Guaranteed to be initialized when the IsolateRunnable event fires.
-  RefLibrary rootLib = null;
+  LibraryRef rootLib = null;
 
   // A list of all libraries for this isolate.
   //
   // Guaranteed to be initialized when the IsolateRunnable event fires.
-  List<RefLibrary> get libraries => _libraries.map((i) => i.toRef()).toList();
+  List<LibraryRef> get libraries => _libraries.map((i) => i.toRef()).toList();
   List<Library> _libraries = [];
   List<Library> getLibraries() => _libraries;
 
@@ -979,7 +979,7 @@ class Isolate extends Response {
   List<Breakpoint> breakpoints;
 
   // The error that is causing this isolate to exit, if applicable.
-  VmError error = null;
+  Error error = null;
 
   // The current pause on exception mode for this isolate.
   ExceptionPauseMode exceptionPauseMode;
@@ -988,14 +988,14 @@ class Isolate extends Response {
   // if any.
   List<String> extensionRPCs = null;
 
-  RefIsolate toRef() => RefIsolate()
+  IsolateRef toRef() => IsolateRef()
     ..id = id
     ..number = number
     ..name = name;
 }
 
-class RefLibrary extends RefObject {
-  RefLibrary(String id, this.name, this.uri) : super('@Library', id);
+class LibraryRef extends ObjRef {
+  LibraryRef(String id, this.name, this.uri) : super('@Library', id);
 
   // The name of this library.
   final String name;
@@ -1004,7 +1004,7 @@ class RefLibrary extends RefObject {
   final String uri;
 }
 
-class Library extends VmObject {
+class Library extends Obj {
   Library() : super('Library');
 
   // The name of this library.
@@ -1020,20 +1020,20 @@ class Library extends VmObject {
   List<LibraryDependency> dependencies;
 
   // A list of the scripts which constitute this library.
-  List<RefScript> get scripts => _scripts.map((i) => i.toRef()).toList();
+  List<ScriptRef> get scripts => _scripts.map((i) => i.toRef()).toList();
   List<Script> _scripts = [];
   List<Script> getScripts() => _scripts;
 
   // A list of the top-level variables in this library.
-  List<RefField> variables;
+  List<FieldRef> variables;
 
   // A list of the top-level functions in this library.
-  List<RefFunction> functions;
+  List<FuncRef> functions;
 
   // A list of all classes in this library.
-  List<RefClass> classes;
+  List<ClassRef> classes;
 
-  RefLibrary toRef() => RefLibrary(id, name, uri);
+  LibraryRef toRef() => LibraryRef(id, name, uri);
 }
 
 class LibraryDependency {
@@ -1047,12 +1047,12 @@ class LibraryDependency {
   String prefix;
 
   // The library being imported or exported.
-  RefLibrary target;
+  LibraryRef target;
 }
 
 class MapAssociation {
-  Object /*RefInstance|Sentinel*/ key;
-  Object /*RefInstance|Sentinel*/ value;
+  Object /*InstanceRef|Sentinel*/ key;
+  Object /*InstanceRef|Sentinel*/ value;
 }
 
 class Message extends Response {
@@ -1073,14 +1073,14 @@ class Message extends Response {
   int size;
 
   // A reference to the function that will be invoked to handle this message.
-  RefFunction handler = null;
+  FuncRef handler = null;
 
   // The source location of handler.
   SourceLocation location = null;
 }
 
-class RefNull extends RefInstance {
-  RefNull(String id, InstanceKind kind, RefClass class_)
+class NullRef extends InstanceRef {
+  NullRef(String id, InstanceKind kind, ClassRef class_)
       : super(id, kind, class_);
 
   // Always 'null'.
@@ -1091,19 +1091,19 @@ class Null extends Instance {
   // Always 'null'.
   String valueAsString = 'null';
 
-  RefNull toRef() => RefNull(id, kind, class_);
+  NullRef toRef() => NullRef(id, kind, class_);
 }
 
-class RefObject extends Response {
-  RefObject(String type, this.id) : super(type);
+class ObjRef extends Response {
+  ObjRef(String type, this.id) : super(type);
 
   // A unique identifier for an Object. Passed to the
   // getObject RPC to load this Object.
   String id;
 }
 
-abstract class VmObject extends Response {
-  VmObject(String type) : super(type);
+abstract class Obj extends Response {
+  Obj(String type) : super(type);
 
   // A unique identifier for an Object. Passed to the
   // getObject RPC to reload this Object.
@@ -1119,7 +1119,7 @@ abstract class VmObject extends Response {
   //
   // Moving an Object into or out of the heap is considered a
   // backwards compatible change for types other than Instance.
-  RefClass class_ = null;
+  ClassRef class_ = null;
 
   // The size of this object in the heap.
   //
@@ -1131,7 +1131,7 @@ abstract class VmObject extends Response {
   int size = null;
 
   // Return a reference to this object.
-  RefObject toRef();
+  ObjRef toRef();
 }
 
 class ReloadReport extends Response {
@@ -1182,21 +1182,21 @@ enum SentinelKind {
 
 enum FrameKind { Regular, AsyncCausal, AsyncSuspensionMarker, AsyncActivation }
 
-class RefScript extends RefObject {
-  RefScript(String id, this.uri) : super('@Script', id);
+class ScriptRef extends ObjRef {
+  ScriptRef(String id, this.uri) : super('@Script', id);
 
   // The uri from which this script was loaded.
   final String uri;
 }
 
-class Script extends VmObject {
+class Script extends Obj {
   Script() : super('Script');
 
   // The uri from which this script was loaded.
   String uri;
 
   // The library which owns this script.
-  RefLibrary library;
+  LibraryRef library;
 
   // The source code for this script. This can be null for certain built-in
   // scripts.
@@ -1205,20 +1205,20 @@ class Script extends VmObject {
   // A table encoding a mapping from token position to line and column.
   List<List<int>> tokenPosTable;
 
-  RefScript toRef() => RefScript(id, uri);
+  ScriptRef toRef() => ScriptRef(id, uri);
 }
 
 class ScriptList extends Response {
   ScriptList() : super('ScriptList');
 
-  List<RefScript> scripts;
+  List<ScriptRef> scripts;
 }
 
 class SourceLocation extends Response {
   SourceLocation() : super('SourceLocation');
 
   // The script containing the source location.
-  RefScript script;
+  ScriptRef script;
 
   // The first token of the location.
   int tokenPos;
@@ -1241,7 +1241,7 @@ class SourceReport extends Response {
   List<SourceReportRange> ranges;
 
   // A list of scripts, referenced by index in the report's ranges.
-  List<RefScript> scripts;
+  List<ScriptRef> scripts;
 }
 
 class SourceReportCoverage {
@@ -1278,7 +1278,7 @@ class SourceReportRange {
 
   // The error while attempting to compile this range, if this
   // report was generated with forceCompile=true.
-  RefError error = null;
+  ErrorRef error = null;
 
   // Code coverage information for this range.  Provided only when the
   // Coverage report has been requested and the range has been
@@ -1315,14 +1315,14 @@ class Success extends Response {
 
 class TimelineEvent {}
 
-class RefTypeArguments extends RefObject {
-  RefTypeArguments(String id, this.name) : super('@TypeArguments', id);
+class TypeArgumentsRef extends ObjRef {
+  TypeArgumentsRef(String id, this.name) : super('@TypeArguments', id);
 
   // A name for this type argument list.
   String name;
 }
 
-class TypeArguments extends VmObject {
+class TypeArguments extends Obj {
   TypeArguments() : super('TypeArguments');
 
   // A name for this type argument list.
@@ -1332,16 +1332,16 @@ class TypeArguments extends VmObject {
   //
   // The value will always be one of the kinds:
   // Type, TypeRef, TypeParameter, BoundedType.
-  List<RefInstance> types;
+  List<InstanceRef> types;
 
-  RefTypeArguments toRef() => RefTypeArguments(id, name);
+  TypeArgumentsRef toRef() => TypeArgumentsRef(id, name);
 }
 
 class UnresolvedSourceLocation extends Response {
   UnresolvedSourceLocation() : super('UnresolvedSourceLocation');
 
   // The script containing the source location if the script has been loaded.
-  RefScript script = null;
+  ScriptRef script = null;
 
   // The uri of the script containing the source location if the script
   // has yet to be loaded.
@@ -1372,8 +1372,8 @@ class Version extends Response {
   int minor;
 }
 
-class RefVM extends Response {
-  RefVM() : super('@VM');
+class VMRef extends Response {
+  VMRef() : super('@VM');
 
   // A name identifying this vm. Not guaranteed to be unique.
   String name;
@@ -1405,7 +1405,7 @@ class VM extends Response {
   int startTime;
 
   // A list of isolates running in the VM.
-  List<RefIsolate> get isolates => _isolates.map((i) => i.toRef()).toList();
+  List<IsolateRef> get isolates => _isolates.map((i) => i.toRef()).toList();
   List<Isolate> _isolates = [];
   List<Isolate> getIsolates() => _isolates;
 }
