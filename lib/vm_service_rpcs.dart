@@ -379,8 +379,10 @@ class Service {
     // Parse and map script in the browser back to Dart libraries.
     _cdp.debugger.enable();
     _cdp.debugger.onScriptParsed.listen((e) async {
+      //print('onScriptParsed ${e.script.url}');
       _processJsScript(e.script);
     });
+
     _cdp.debugger.onPaused.listen((e) async {
       var params = e.params;
       var event = Event()..isolate = isolateRef;
@@ -427,7 +429,7 @@ class Service {
     });
 
     // TODO(vsm): Wait properly for page to load?
-    Future<void>.delayed(const Duration(milliseconds: 1000), () {
+    Future<void>.delayed(const Duration(milliseconds: 3000), () {
       // We delay a small amount in order to allow the script information to
       // be populated as events.
 
@@ -442,10 +444,7 @@ class Service {
   Frame _mapFrame(WipCallFrame jsFrame) {
     var jsLocation = jsFrame.location;
     var jsId = jsLocation.scriptId;
-    print(jsFrame);
-    print(jsId);
     var jsLine = jsLocation.lineNumber;
-    print(jsLine);
     var jsColumn = jsLocation.columnNumber;
     var locationData = _jsIdToLocationData[jsId];
     var locations = locationData.dartLocations;
@@ -453,7 +452,6 @@ class Service {
       for (var location in locations[dartUrl]) {
         if (location.jsLine > jsLine) {
           // TODO(vsm): Look for best match.
-          print("Mapped frame to $dartUrl:${location.dartLine}");
           var script = _dartUrlToScript[dartUrl];
           if (script != null) {
             return Frame()
@@ -466,7 +464,6 @@ class Service {
         }
       }
     }
-    print('Failed');
     return null;
   }
 
@@ -532,6 +529,7 @@ class Service {
             // TODO(vsm): Record this properly.
             var dartSource = await _fetch(dartUrl);
             if (dartSource == null) continue;
+            dartUrl = _dartifiedUrl(dartUrl);
 
             var dartScript = _createScript()
               ..uri = dartUrl
@@ -575,6 +573,23 @@ class Service {
   Stack _pausedStack = null;
 }
 
+// TODO(vsm): We need to do this mapping more robustly.
+// Convert to a Dart URL - e.g., "package:".
+String _dartifiedUrl(String url) {
+  var uri = Uri.parse(url);
+
+  if (uri.path.startsWith('/packages/')) {
+    var parts = uri.path.split('/');
+    var package = parts[2];
+    if (package == 'flutter_web') {
+      // Remap hack for now.
+      package = 'flutter';
+    }
+    url = 'package:$package/${parts.sublist(3).join('/')}';
+  }
+  return url;
+}
+
 class RpcErrorData {
   RpcErrorData(this.details);
 
@@ -611,7 +626,8 @@ class DartLocationData {
     for (var lineEntry in mapping.lines) {
       for (var entry in lineEntry.entries) {
         var index = entry.sourceUrlId;
-        var dartUrl = p.join(parent, mapping.urls[index]);
+        if (index == null) continue;
+        var dartUrl = _dartifiedUrl(p.join(parent, mapping.urls[index]));
         tokenPosTable = dartUrlToTokenPosTable.putIfAbsent(dartUrl, () => []);
         dartLocationList = dartLocations.putIfAbsent(dartUrl, () => []);
         var dartLine = entry.sourceLine;

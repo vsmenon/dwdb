@@ -1017,7 +1017,7 @@ class Library extends Obj {
   bool debuggable = true;
 
   // A list of the imports for this library.
-  List<LibraryDependency> dependencies;
+  List<LibraryDependency> dependencies = [];
 
   // A list of the scripts which constitute this library.
   List<ScriptRef> get scripts => _scripts.map((i) => i.toRef()).toList();
@@ -1025,13 +1025,13 @@ class Library extends Obj {
   List<Script> getScripts() => _scripts;
 
   // A list of the top-level variables in this library.
-  List<FieldRef> variables;
+  List<FieldRef> variables = [];
 
   // A list of the top-level functions in this library.
-  List<FuncRef> functions;
+  List<FuncRef> functions = [];
 
   // A list of all classes in this library.
-  List<ClassRef> classes;
+  List<ClassRef> classes = [];
 
   LibraryRef toRef() => LibraryRef(id, name, uri);
 }
